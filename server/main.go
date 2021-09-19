@@ -2,6 +2,8 @@
 package main
 
 import (
+	"bufio"
+	"io"
 	"net"
 	"strconv"
 	"sync"
@@ -76,8 +78,32 @@ func createControlChannel() {
 			global.Logger.Info(err)
 			continue
 		}
-
 		global.Logger.Info("[新连接]" + tcpConn.RemoteAddr().String())
+
+		// 验证账号密码
+		reader := bufio.NewReader(tcpConn)
+
+		s, err := reader.ReadString('\n')
+		if err != nil || err == io.EOF {
+			global.Logger.Info("[账号密码读取失败]" + tcpConn.RemoteAddr().String() + s + err.Error())
+			return
+		}
+
+		// 账号密码验证不通过则返回
+		if s != network.ValidationString+"\n" {
+			global.Logger.Info("[账号密码验证失败]" + tcpConn.RemoteAddr().String() + s)
+			return
+		}
+
+		global.Logger.Info("[账号密码验证成功]" + tcpConn.RemoteAddr().String())
+
+		_, err = tcpConn.Write(([]byte)(network.Validation + "\n"))
+
+		if err != nil || err == io.EOF {
+			global.Logger.Info("[验证结果传输失败]" + tcpConn.RemoteAddr().String())
+			return
+		}
+
 		// 如果当前已经有一个客户端存在，则丢弃这个链接
 		if clientConn != nil {
 			_ = tcpConn.Close()

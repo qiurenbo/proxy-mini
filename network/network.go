@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	KeepAlive     = "KEEP_ALIVE"
-	NewConnection = "NEW_CONNECTION"
+	KeepAlive        = "KEEP_ALIVE"
+	NewConnection    = "NEW_CONNECTION"
+	Validation       = "VALIDATION_OK"
+	ValidationString = "root;jxlib@2535008"
 )
 
 func CreateTCPListener(addr string) (*net.TCPListener, error) {
@@ -45,7 +47,7 @@ func joinConn(local *net.TCPConn, remote *net.TCPConn) {
 	defer remote.Close()
 	_, err := io.Copy(local, remote)
 	if err != nil {
-		global.Logger.Info("copy failed ", err.Error())
+		global.Logger.Info("[TCP通道连接断开]", err.Error())
 		return
 	}
 }

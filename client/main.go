@@ -21,14 +21,44 @@ var (
 
 func main() {
 	global.Logger = common.InitLogger()
+	// 连接服务器
 	tcpConn, err := network.CreateTCPConn(remoteControlAddr)
 	if err != nil {
-		global.Logger.Println("[连接失败]" + remoteControlAddr + err.Error())
+		global.Logger.Info("[连接失败]" + remoteControlAddr + err.Error())
 		return
 	}
-	global.Logger.Println("[已连接]" + remoteControlAddr)
+	global.Logger.Info("[已连接]" + remoteControlAddr)
+
+	//  验证账号密码
+	_, err = tcpConn.Write(([]byte)(network.ValidationString + "\n"))
+
+	// _, err = writer.WriteString(network.ValidationString + "\n")
+
+	if err != nil || err == io.EOF {
+		global.Logger.Info("[账号密码传输失败]" + remoteControlAddr + err.Error())
+		return
+	}
+
+	global.Logger.Info("[等待验证结果回传]" + remoteControlAddr)
 
 	reader := bufio.NewReader(tcpConn)
+
+	s, err := reader.ReadString('\n')
+	if err != nil || err == io.EOF {
+		return
+	}
+
+	// 账号密码验证不通过则返回
+	if s != network.Validation+"\n" {
+		global.Logger.Info("[账号密码验证失败]" + remoteControlAddr + err.Error())
+		return
+	}
+
+	global.Logger.Info("[账号密码验证成功]" + remoteControlAddr)
+
+	// 创建一个 buffer reader 不用手动分配 buffer 了
+	// reader := bufio.NewReader(tcpConn)
+	global.Logger.Info("[循环等待传输通道建立指令]" + remoteControlAddr)
 	for {
 		s, err := reader.ReadString('\n')
 		if err != nil || err == io.EOF {
@@ -41,7 +71,7 @@ func main() {
 		}
 	}
 
-	global.Logger.Println("[已断开]" + remoteControlAddr)
+	global.Logger.Info("[已断开]" + remoteControlAddr)
 }
 
 func connectLocalAndRemote() {
@@ -63,7 +93,7 @@ func connectLocalAndRemote() {
 func connectLocal() *net.TCPConn {
 	conn, err := network.CreateTCPConn(localServerAddr)
 	if err != nil {
-		global.Logger.Println("[连接本地服务失败]" + err.Error())
+		global.Logger.Info("[连接本地服务失败]" + err.Error())
 	}
 	return conn
 }
@@ -71,7 +101,7 @@ func connectLocal() *net.TCPConn {
 func connectRemote() *net.TCPConn {
 	conn, err := network.CreateTCPConn(remoteServerAddr)
 	if err != nil {
-		global.Logger.Println("[连接远端服务失败]" + err.Error())
+		global.Logger.Info("[连接远端服务失败]" + err.Error())
 	}
 	return conn
 }
