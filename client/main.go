@@ -29,36 +29,12 @@ func main() {
 	}
 	global.Logger.Info("[已连接]" + remoteControlAddr)
 
-	//  验证账号密码
-	_, err = tcpConn.Write(([]byte)(network.ValidationString + "\n"))
-
-	// _, err = writer.WriteString(network.ValidationString + "\n")
-
-	if err != nil || err == io.EOF {
-		global.Logger.Info("[账号密码传输失败]" + remoteControlAddr + err.Error())
+	if !auth(tcpConn) {
 		return
 	}
 
-	global.Logger.Info("[等待验证结果回传]" + remoteControlAddr)
-
-	reader := bufio.NewReader(tcpConn)
-
-	s, err := reader.ReadString('\n')
-	if err != nil || err == io.EOF {
-		return
-	}
-
-	// 账号密码验证不通过则返回
-	if s != network.Validation+"\n" {
-		global.Logger.Info("[账号密码验证失败]" + remoteControlAddr + err.Error())
-		return
-	}
-
-	global.Logger.Info("[账号密码验证成功]" + remoteControlAddr)
-
-	// 创建一个 buffer reader 不用手动分配 buffer 了
-	// reader := bufio.NewReader(tcpConn)
 	global.Logger.Info("[循环等待传输通道建立指令]" + remoteControlAddr)
+	reader := bufio.NewReader(tcpConn)
 	for {
 		s, err := reader.ReadString('\n')
 		if err != nil || err == io.EOF {
@@ -67,18 +43,58 @@ func main() {
 
 		// 当有新连接信号出现时，新建一个tcp连接
 		if s == network.NewConnection+"\n" {
+			global.Logger.Info("[传输通道建立完成]" + remoteControlAddr)
 			go connectLocalAndRemote()
 		}
 	}
 
-	global.Logger.Info("[已断开]" + remoteControlAddr)
+	// global.Logger.Info("[已断开]" + remoteControlAddr)
 }
 
+func auth(tcpConn *net.TCPConn) bool {
+	// //  验证账号密码
+	_, err := tcpConn.Write(([]byte)(network.ValidationString + "\n"))
+
+	// _, err = writer.WriteString(network.ValidationString + "\n")
+
+	if err != nil || err == io.EOF {
+		global.Logger.Info("[账号密码传输失败]" + remoteControlAddr + err.Error())
+		return false
+	}
+
+	global.Logger.Info("[等待验证结果回传]" + remoteControlAddr)
+
+	reader := bufio.NewReader(tcpConn)
+
+	s, err := reader.ReadString('\n')
+	if err != nil || err == io.EOF {
+		global.Logger.Info("[读取结果失败]" + remoteControlAddr + err.Error())
+		return false
+	}
+
+	global.Logger.Info("[读取结果成功]" + s)
+
+	// 账号密码验证不通过则返回
+	if s != network.Validation+"\n" {
+		global.Logger.Info("[账号密码验证失败]" + remoteControlAddr + err.Error())
+		return false
+	}
+
+	global.Logger.Info("[账号密码验证成功]" + s)
+
+	return true
+}
 func connectLocalAndRemote() {
 	local := connectLocal()
 	remote := connectRemote()
 
+	// 远端验证不成功也直接杀死进程
+	// if !auth(remote) {
+	// 	panic("[连接服务端验证失败]")
+	// }
+
 	if local != nil && remote != nil {
+		global.Logger.Info("[端口流量转发]")
 		network.Join2Conn(local, remote)
 	} else {
 		if local != nil {
@@ -103,5 +119,6 @@ func connectRemote() *net.TCPConn {
 	if err != nil {
 		global.Logger.Info("[连接远端服务失败]" + err.Error())
 	}
+
 	return conn
 }

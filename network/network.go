@@ -38,16 +38,21 @@ func CreateTCPConn(addr string) (*net.TCPConn, error) {
 }
 
 func Join2Conn(local *net.TCPConn, remote *net.TCPConn) {
+	global.Logger.Info("[准备转发本地到远程的流量]")
 	go joinConn(local, remote)
+	global.Logger.Info("[准备转发远程到本地的流量]")
 	go joinConn(remote, local)
 }
 
 func joinConn(local *net.TCPConn, remote *net.TCPConn) {
 	defer local.Close()
 	defer remote.Close()
-	_, err := io.Copy(local, remote)
+	n, err := io.Copy(local, remote)
 	if err != nil {
+		global.Logger.Info("[TCP通道拷贝了]", n, "字节")
 		global.Logger.Info("[TCP通道连接断开]", err.Error())
 		return
 	}
+
+	global.Logger.Info("[TCP通道拷贝了]", n, "字节")
 }

@@ -57,11 +57,39 @@ type ConnMatch struct {
 
 func main() {
 	global.Logger = common.InitLogger()
-	connectionPool = make(map[string]*ConnMatch, 32)
+	connectionPool = make(map[string]*ConnMatch, 1024)
 	go createControlChannel()
 	go acceptUserRequest()
 	go acceptClientRequest()
 	cleanConnectionPool()
+}
+
+func auth(tcpConn *net.TCPConn) bool {
+	reader := bufio.NewReader(tcpConn)
+
+	s, err := reader.ReadString('\n')
+	if err != nil || err == io.EOF {
+		global.Logger.Info("[账号密码读取失败]" + tcpConn.RemoteAddr().String() + s + err.Error())
+		return false
+	}
+
+	// 账号密码验证不通过则返回
+	if s != network.ValidationString+"\n" {
+		global.Logger.Info("[账号密码验证失败]" + tcpConn.RemoteAddr().String() + s)
+		return false
+	}
+
+	global.Logger.Info("[账号密码验证成功]" + tcpConn.RemoteAddr().String())
+
+	_, err = tcpConn.Write(([]byte)(network.Validation + "\n"))
+
+	if err != nil || err == io.EOF {
+		global.Logger.Info("[验证结果传输失败]" + tcpConn.RemoteAddr().String())
+		return false
+	}
+	global.Logger.Info("[验证结果传输成功]" + tcpConn.RemoteAddr().String())
+
+	return true
 }
 
 // 创建一个控制通道，用于传递控制消息，如：心跳，创建新连接
@@ -81,36 +109,18 @@ func createControlChannel() {
 		global.Logger.Info("[新连接]" + tcpConn.RemoteAddr().String())
 
 		// 验证账号密码
-		reader := bufio.NewReader(tcpConn)
-
-		s, err := reader.ReadString('\n')
-		if err != nil || err == io.EOF {
-			global.Logger.Info("[账号密码读取失败]" + tcpConn.RemoteAddr().String() + s + err.Error())
-			return
-		}
-
-		// 账号密码验证不通过则返回
-		if s != network.ValidationString+"\n" {
-			global.Logger.Info("[账号密码验证失败]" + tcpConn.RemoteAddr().String() + s)
-			return
-		}
-
-		global.Logger.Info("[账号密码验证成功]" + tcpConn.RemoteAddr().String())
-
-		_, err = tcpConn.Write(([]byte)(network.Validation + "\n"))
-
-		if err != nil || err == io.EOF {
-			global.Logger.Info("[验证结果传输失败]" + tcpConn.RemoteAddr().String())
-			return
-		}
-
-		// 如果当前已经有一个客户端存在，则丢弃这个链接
-		if clientConn != nil {
-			_ = tcpConn.Close()
+		if auth(tcpConn) {
+			// 如果当前已经有一个客户端存在，则丢弃这个链接
+			if clientConn != nil {
+				_ = tcpConn.Close()
+			} else {
+				clientConn = tcpConn
+				go keepAlive()
+			}
 		} else {
-			clientConn = tcpConn
-			go keepAlive()
+			tcpConn.Close()
 		}
+
 	}
 }
 
@@ -127,7 +137,7 @@ func keepAlive() {
 				clientConn = nil
 				return
 			}
-			time.Sleep(time.Second * 3)
+			time.Sleep(time.Second * 1)
 		}
 	}()
 }
@@ -176,6 +186,7 @@ func acceptClientRequest() {
 	if err != nil {
 		panic(err)
 	}
+
 	defer tcpListener.Close()
 
 	for {
@@ -183,11 +194,14 @@ func acceptClientRequest() {
 		if err != nil {
 			continue
 		}
+
 		go establishTunnel(tcpConn)
+
 	}
 }
 
 func establishTunnel(tunnel *net.TCPConn) {
+
 	connectionPoolLock.Lock()
 	defer connectionPoolLock.Unlock()
 
@@ -200,6 +214,7 @@ func establishTunnel(tunnel *net.TCPConn) {
 	}
 
 	_ = tunnel.Close()
+
 }
 
 func cleanConnectionPool() {
